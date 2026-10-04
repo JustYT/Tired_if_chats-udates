@@ -1,7 +1,7 @@
 # Саммаризатор чатов · код релиза
 
 Этот репозиторий содержит только код обновлений. Для первой установки
-получатель использует исходный архив `chat-summarizer-bootstrap-v2.2.3.tar.gz`,
+получатель использует исходный архив `chat-summarizer-bootstrap-v2.2.5.tar.gz`,
 который владелец передаёт отдельно. Архив содержит этот код и ключ только для
 чтения данного закрытого репозитория. Если установку выполняет Codex,
 сначала прочитайте `DEPLOY_AGENT.md` внутри исходного архива.
@@ -23,7 +23,7 @@ Splitty. Перед созданием службы установщик про�
 на своей ВМ со **своим** staff-логином напрямую:
 
 ```sh
-git clone --branch v2.2.4 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
+git clone --branch v2.2.5 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
 cd chat-summarizer-source
 ./install.sh STAFF_LOGIN
 systemctl --user status chat-studio.service
@@ -32,6 +32,12 @@ curl -fsS http://127.0.0.1:8765/api/health
 
 В обычной схеме получателю доступ GitHub не нужен: он устанавливает из архива,
 а встроенный ключ позволяет получать следующие теги обновлений.
+
+Если код уже установлен без автообновлений, перенесите на ту же ВМ полный
+исходный архив v2.2.5, распакуйте его под владельцем службы и запустите
+`./enable-updates.sh`. Повторный запуск `install.sh` не требуется. Скрипт
+проверяет отсутствие активной саммаризации, устанавливает ключ и конфигурацию
+с правами 0600, проверяет чтение репозитория и перезапускает службу.
 
 Установленный архив поддерживает `~/.local/opt/chat-studio/update.sh check` и
 `~/.local/opt/chat-studio/update.sh apply vX.Y.Z`. Исходные данные и токены
