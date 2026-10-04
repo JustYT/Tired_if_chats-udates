@@ -14,8 +14,11 @@
 Если адрес дан как `ssh://HOST`, для команд используй `HOST` без схемы.
 При отсутствии этих данных спроси их до установки.
 
-Убедись, что на ВМ Linux, Python 3.10+, пользовательский systemd и SSH. Для
-Codex-подписки нужны `/usr/bin/bwrap`, `/usr/bin/prlimit` и установленный
+Убедись, что на ВМ Linux, Python 3.10+, пользовательский systemd, SSH и уже
+настроенный Splitty. Установщик проверит его статус и официальный
+`proxy-check` под тем же Linux-пользователем до записи файлов. При сбое
+исправь настройку Splitty или сеть и повтори установку; не обходи проверку.
+Для Codex-подписки нужны `/usr/bin/bwrap`, `/usr/bin/prlimit` и установленный
 администратором, защищённый от записи обычным пользователем Codex CLI.
 На аналогичной Ubuntu-ВМ при отсутствии `bwrap` можно установить пакет
 `bubblewrap`. Если нет прав на установку, явно сообщи, что функция Codex
@@ -31,7 +34,7 @@ Codex-подписки нужны `/usr/bin/bwrap`, `/usr/bin/prlimit` и уст
 Клонируй закреплённый релиз прямо на целевую ВМ и запусти:
 
 ```sh
-git clone --branch v2.2.2 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
+git clone --branch v2.2.3 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
 cd chat-summarizer-source
 ./install.sh STAFF_LOGIN
 ```

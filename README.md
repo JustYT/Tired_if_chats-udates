@@ -1,7 +1,7 @@
 # Саммаризатор чатов · код релиза
 
 Этот репозиторий содержит только код обновлений. Для первой установки
-получатель использует исходный архив `chat-summarizer-bootstrap-v2.2.0.tar.gz`,
+получатель использует исходный архив `chat-summarizer-bootstrap-v2.2.3.tar.gz`,
 который владелец передаёт отдельно. Архив содержит этот код и ключ только для
 чтения данного закрытого репозитория. Если установку выполняет Codex,
 сначала прочитайте `DEPLOY_AGENT.md` внутри исходного архива.
@@ -10,7 +10,11 @@
 В репозитории только код, статические ресурсы и wheel `websockets`; БД, история,
 профили Codex и токены в него не входят. Сервер слушает только `127.0.0.1`.
 
-Требуются Python 3.10+, пользовательский systemd и SSH-доступ.
+Требуются Python 3.10+, пользовательский systemd, SSH-доступ и уже настроенный
+Splitty. Перед созданием службы установщик проверяет `splitty status` и
+официальный `proxy-check` из-под того же Linux-пользователя. Если проверка
+не пройдёт, установка остановится без создания данных и службы. Splitty
+установщик не меняет.
 Для личной подписки Codex дополнительно нужны доверенный установленный
 администратором Codex CLI, `/usr/bin/bwrap` и `/usr/bin/prlimit`. Если их нет,
 остальные функции работают, а Codex покажет ошибку при попытке входа.
@@ -19,7 +23,7 @@
 на своей ВМ со **своим** staff-логином напрямую:
 
 ```sh
-git clone --branch v2.2.2 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
+git clone --branch v2.2.3 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
 cd chat-summarizer-source
 ./install.sh STAFF_LOGIN
 systemctl --user status chat-studio.service

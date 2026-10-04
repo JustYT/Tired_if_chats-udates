@@ -74,6 +74,7 @@ fi
 case "$install_dir$data_dir" in
     *[[:space:]]*|*\;*|*\"*|*\\*) echo 'Unsupported path characters' >&2; exit 2 ;;
 esac
+"$root/check-splitty.sh"
 umask 077
 mkdir -p "$install_dir" "$data_dir" "$unit_dir"
 cp -R "$root/app" "$install_dir/app"
