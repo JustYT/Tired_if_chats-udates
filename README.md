@@ -9,13 +9,13 @@
 
 ## Первая установка
 
-Получатель использует `chat-summarizer-bootstrap-v2.3.0.tar.gz` из
+Получатель использует `chat-summarizer-bootstrap-v2.3.2.tar.gz` из
 `JustYT/Tired_if_chats`. Архив не содержит ключа доступа к GitHub. На Linux-ВМ
 нужны Python 3.10+, пользовательский systemd, git, ssh-keygen, systemd-run и
 уже настроенный Splitty. Установщик проверяет Splitty до создания службы.
 
 ```sh
-tar -xzf chat-summarizer-bootstrap-v2.3.0.tar.gz
+tar -xzf chat-summarizer-bootstrap-v2.3.2.tar.gz
 cd chat-summarizer-bootstrap
 ./install.sh STAFF_LOGIN
 curl -fsS http://127.0.0.1:8765/api/health

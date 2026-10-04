@@ -26,3 +26,4 @@ YS Text: official Yandex CDN, retrieved for the local interface.
 - tired of chats: original PNG supplied by the user on 2026-10-01. Displayed in the sidebar and mobile header; source pixels preserved.
 
 - tired-of-chats-v2.png: replacement PNG supplied by the user on 2026-10-01, preserved unchanged.
+- yandex-messenger.png: official 32×32 Messenger favicon linked by https://messenger.360.yandex.ru/ on 2026-10-04; source https://yastatic.net/s3/chat-static/favicons/360/favicon-32.png.
