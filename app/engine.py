@@ -9,6 +9,7 @@ from .delivery import Destinations,split_text,DeliveryUnknown
 from .store import Conflict,now,summary_for_kind,targets_for_kind
 from .read_state import read_targets
 from .timing import RunTiming
+from .splitty import SplittyProbe, UNAVAILABLE
 
 def period(kind,at):
     at=at.astimezone(TZ)
@@ -34,15 +35,18 @@ def due_slots(schedule,armed,at):
     return due
 
 class Engine:
-    def __init__(self,store,integrations,principal,model=None,destinations=None):
+    def __init__(self,store,integrations,principal,model=None,destinations=None,splitty=None):
         self.store=store;self.integrations=integrations;self.principal=principal
         self.jobs=Jobs(store);self.model=model or StefaniaModel();self.destinations=destinations or Destinations(integrations)
+        self.splitty=splitty if splitty is not None else SplittyProbe()
         self.gate=threading.RLock();self.cancel=threading.Event();self.worker=None;self.shutdown=threading.Event()
         with store.connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS controls(login TEXT PRIMARY KEY,armed_at TEXT NOT NULL)')
 
-    def readiness(self,snap,kind=None):
+    def readiness(self,snap,kind=None,splitty_state=None):
         model=self.model.readiness(snap['settings']['summary']);dest=snap['settings']['destinations'];reasons=[]
+        if not (splitty_state if splitty_state is not None else self.splitty.check())['ready']:
+            reasons.append(UNAVAILABLE)
         targets=(targets_for_kind(snap['settings'],kind) if kind else
                  {target:any(targets_for_kind(snap['settings'],mode)[target] for mode in ('daily','weekly'))
                   for target in ('bot','wiki')})
@@ -57,7 +61,7 @@ class Engine:
     def launch(self,kind='today',request_id=None,slot=None,arm=False):
         with self.gate:
             login=self.principal.login;snap=self.store.snapshot(login)
-            ready=self.readiness(snap,kind)
+            ready=self.readiness(snap,kind,self.splitty.check(fresh=True))
             if not ready['ready']:raise Conflict(' '.join(ready['reasons']))
             at=slot or datetime.now(TZ);start,end=period(kind,at)
             dedupe=kind+':'+(slot.isoformat() if slot else (request_id or uuid.uuid4().hex))
@@ -104,6 +108,7 @@ class Engine:
                 timing.advance()
             messages,stats=collect(self.integrations,p,chats,start,end,cancel,collected)
             update(status='summarizing',progress='Готовим саммари',stats=stats)
+            if not self.splitty.check(fresh=True)['ready']: raise RunError(UNAVAILABLE)
             items=summarize(self.model,messages,summary,cancel,lambda text:update(progress=text),timing=timing)
             checkpoint(cancel)
             text=render(items,messages,summary,start,end,stats,kind=job['kind'])

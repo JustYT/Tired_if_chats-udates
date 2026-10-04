@@ -23,7 +23,7 @@ Splitty. Перед созданием службы установщик про�
 на своей ВМ со **своим** staff-логином напрямую:
 
 ```sh
-git clone --branch v2.2.3 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
+git clone --branch v2.2.4 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
 cd chat-summarizer-source
 ./install.sh STAFF_LOGIN
 systemctl --user status chat-studio.service

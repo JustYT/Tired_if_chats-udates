@@ -19,6 +19,7 @@ from .history import RunError
 from .jobs import ACTIVE
 from .integrations import Principal, Integrations, EnvironmentCredentials
 from .update import Updates, UpdateError
+from .splitty import SplittyProbe
 
 STATIC = Path(__file__).parent / 'static'
 CONTENT_ITEMS = [
@@ -113,7 +114,7 @@ def validate(payload, login):
 
 
 class Application:
-    def __init__(self, data_path, owner, bot_login='', integrations=None, codex=None):
+    def __init__(self, data_path, owner, bot_login='', integrations=None, codex=None, splitty=None):
         if not re.fullmatch(r'[a-z][a-z0-9._-]{1,48}', owner):
             raise ValueError('Invalid configured corporate login')
         self.principal = Principal(owner)
@@ -121,7 +122,8 @@ class Application:
         self.store.ensure(owner, bot_login)
         self.integrations = integrations or Integrations(EnvironmentCredentials(owner))
         self.codex = codex or CodexAuth(Path(data_path).parent/'codex-profiles')
-        self.engine = Engine(self.store, self.integrations, self.principal, model=ModelRouter(self.codex, owner))
+        self.engine = Engine(self.store, self.integrations, self.principal,
+                             model=ModelRouter(self.codex, owner), splitty=splitty or SplittyProbe())
         self.stefania = self.engine.model.stefania
         self.csrf = secrets.token_urlsafe(32)
         self.operation_lock = threading.Lock()
@@ -164,11 +166,13 @@ class Application:
             connections.pop('bot', None)
         if connections.get('wiki', {}).get('target') != dest['wiki_slug']:
             connections.pop('wiki', None)
+        splitty = self.engine.splitty.check()
         return {**snap, 'user': {'login': login, 'display_name': self.integrations.identity.get(login, login)},
-                'csrf': self.csrf, 'connections': connections, 'codex': self.codex.status(login),
+                'csrf': self.csrf, 'connections': connections, 'splitty': splitty,
+                'codex': self.codex.status(login),
                 'capabilities': {'summarization': True, 'sending': True, 'scheduler': True,
                                  'test_sends_immediately': True},
-                'readiness': self.engine.readiness(snap), 'jobs': self.engine.jobs.list(login),
+                'readiness': self.engine.readiness(snap,splitty_state=splitty), 'jobs': self.engine.jobs.list(login),
                 'content_items': CONTENT_ITEMS, 'operation': self.operation,
                 'updates': {**self.update_status,
                             'last_result': self.updates.state() if self.updates else None}}
@@ -192,7 +196,10 @@ class Application:
             self.perform('sync', lambda: self.store.replace_chats(principal.login, self.integrations.chats(principal)))
         elif route == '/api/connections/check':
             dest = self.store.snapshot(principal.login)['settings']['destinations']
-            self.perform('check', lambda: self.integrations.check_all(principal, dest))
+            def check_connections():
+                self.engine.splitty.check(fresh=True)
+                self.integrations.check_all(principal, dest)
+            self.perform('check', check_connections)
         elif route == '/api/updates/check':
             fields(body, [])
             self.perform('update-check', self.check_updates)
