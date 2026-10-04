@@ -29,6 +29,20 @@ def wiki_inline(text):
     parts.append(html.escape(re.sub(r'\\([\\`*_{}\[\]()<>#!|+])',r'\1',text[offset:])))
     return ''.join(parts)
 
+def wiki_color_block(index, heading, lines):
+    color,border=('#FFF8EF','#E8D7BF') if index%2==0 else ('#F2F5DD','#D8E2B8')
+    out=[f'<div style="background-color:{color};border:1px solid {border};border-radius:12px;padding:20px 24px;margin:0 0 20px;">',
+         f'<h2 style="margin:0 0 14px;font-size:20px;">{heading}</h2>']
+    for line in lines:
+        chat=WIKI_CHAT.fullmatch(line)
+        if chat:
+            out.append('<p style="margin:17px 0 8px;line-height:1.6;">'+chat.group(1)+
+                       ' <strong><u>'+wiki_inline(chat.group(2))+'</u></strong></p>')
+        else:
+            out.append('<p style="margin:7px 0;line-height:1.68;">'+wiki_inline(line)+'</p>')
+    out.append('</div>')
+    return '::: html\n'+'\n'.join(out)+'\n:::'
+
 def wiki_day_blocks(text):
     """Keep a weekly date-grouped report on one page, alternating chosen colors."""
     groups=[]
@@ -41,21 +55,26 @@ def wiki_day_blocks(text):
         elif line.strip():
             return None  # By-chat weekly reports have no date blocks.
     if not groups: return None
-    blocks=[]
-    for index,(day,lines) in enumerate(groups):
-        color,border=('#FFF8EF','#E8D7BF') if index%2==0 else ('#F2F5DD','#D8E2B8')
-        out=[f'<div style="background-color:{color};border:1px solid {border};border-radius:12px;padding:20px 24px;margin:0 0 20px;">',
-             f'<h2 style="margin:0 0 14px;font-size:20px;"><strong style="font-size:20px;">{html.escape(day)}</strong></h2>']
-        for line in lines:
-            chat=WIKI_CHAT.fullmatch(line)
-            if chat:
-                out.append('<p style="margin:17px 0 8px;line-height:1.6;">'+chat.group(1)+
-                           ' <strong><u>'+wiki_inline(chat.group(2))+'</u></strong></p>')
-            else:
-                out.append('<p style="margin:7px 0;line-height:1.68;">'+wiki_inline(line)+'</p>')
-        out.append('</div>')
-        blocks.append('::: html\n'+'\n'.join(out)+'\n:::')
-    return '\n\n'.join(blocks)
+    return '\n\n'.join(wiki_color_block(index,
+                      f'<strong style="font-size:20px;">{html.escape(day)}</strong>',lines)
+                      for index,(day,lines) in enumerate(groups))
+
+def wiki_chat_blocks(text):
+    """Give each chat its own alternating block when weekly dates are hidden."""
+    groups=[]
+    for line in text.splitlines():
+        stripped=line.strip()
+        chat=WIKI_CHAT.fullmatch(stripped)
+        if chat:
+            groups.append((chat,[]))
+        elif groups:
+            if stripped: groups[-1][1].append(stripped)
+        elif stripped:
+            return None
+    if not groups: return None
+    return '\n\n'.join(wiki_color_block(index,
+                      chat.group(1)+' <strong><u>'+wiki_inline(chat.group(2))+'</u></strong>',lines)
+                      for index,(chat,lines) in enumerate(groups))
 
 def wiki_document(text, *, kind='today', start=None, end=None):
     """Only user-facing text goes into Wiki; job identity is in the unique slug."""
@@ -70,6 +89,7 @@ def wiki_document(text, *, kind='today', start=None, end=None):
         title=f'Неделя {first.isocalendar().week:02d} ({first:%d.%m.%Y} - {last:%d.%m.%Y})'
     if kind=='weekly':
         blocks=wiki_day_blocks(text)
+        if blocks is None: blocks=wiki_chat_blocks(text)
         if blocks is not None:return title,blocks
     # YFM needs explicit hard breaks to preserve date/chat/topic lines.
     return title,'  \n'.join(text.split('\n'))
