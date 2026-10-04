@@ -42,6 +42,16 @@
 @media(max-width:700px){.model-card #model-field{min-width:100%;order:3}.model-card #model-ready{margin-left:auto}.chat-head-count{gap:6px}.chat-head-count .toolbar-total{font-size:10px}.schedule-targets{flex-wrap:wrap}}
 .updates-card{padding:14px 17px}.updates-card .card-head{margin-bottom:8px}.updates-card .row{gap:9px;flex-wrap:wrap}.updates-card .row .small{max-width:500px}.updates-card .btn{min-height:34px;padding:7px 11px;font-size:12px}
 .rail-update{border-top:1px solid #39393f;margin:14px 10px 0;padding-top:12px}.rail-update .navitem{margin:0}.update-nav.update-available,.update-nav.update-available.active{background:#274338;color:#b8f0cb;box-shadow:inset 0 0 0 1px #4b8a66}.update-nav.update-available:hover{background:#305341}.update-nav.update-available svg{color:#9ae0b5}.update-dot{width:8px;height:8px;border-radius:50%;background:#72d69a;margin-left:auto;box-shadow:0 0 0 3px #72d69a2a}.updates-card{max-width:720px}.updates-card .card-head{margin-bottom:14px}.update-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px}.updates-card .job-error{margin-top:8px}
+.rail-help{position:relative;margin:0 10px 0;margin-top:auto;color:#b9b9c2}
+.rail-help summary{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer;font-size:14px;list-style:none}
+.rail-help summary::-webkit-details-marker{display:none}
+.rail-help summary:hover,.rail-help[open] summary{background:#38383f;color:#f3f4f5}
+.rail-help summary:focus-visible{outline:3px solid #a47bff;outline-offset:3px}
+.rail-help-menu{position:absolute;left:0;right:0;bottom:calc(100% + 8px);padding:10px;background:#303036;border:1px solid #55555e;border-radius:12px;box-shadow:0 14px 35px #0007;z-index:2}
+.rail-help-menu a{display:flex;align-items:center;gap:10px;padding:10px 8px;border-radius:8px;color:#f3f4f5;font-size:13px;line-height:1.3}
+.rail-help-menu a:hover{background:#414149;text-decoration:none}
+.rail-help-menu svg{width:18px;height:18px}
+.rail-help+.profile{margin-top:8px}
 .service-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media(max-width:1050px){.service-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.service-grid{grid-template-columns:1fr}}
