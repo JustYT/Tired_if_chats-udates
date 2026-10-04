@@ -19,8 +19,8 @@
 на своей ВМ со **своим** staff-логином напрямую:
 
 ```sh
-git clone --branch v2.2.1 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
-cd chat-studio-source
+git clone --branch v2.2.2 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
+cd chat-summarizer-source
 ./install.sh STAFF_LOGIN
 systemctl --user status chat-studio.service
 curl -fsS http://127.0.0.1:8765/api/health
