@@ -1,0 +1,28 @@
+YS Text: official Yandex CDN, retrieved for the local interface.
+
+- https://yastatic.net/s3/home/fonts/ys/4/text-regular.woff2
+- https://yastatic.net/s3/home/fonts/ys/4/text-medium.woff2
+- https://yastatic.net/s3/home/fonts/ys/4/text-bold.woff2
+
+# Источники логотипов
+
+- Яндекс Почта: https://trace-logos.ru/logos/office/yandexmail/ — https://trace-logos.ru/assets/logos/svgs/yandex-mail.svg
+- Яндекс Трекер: https://seeklogo.com/vector-logo/512155/yandex-tracker — https://images.seeklogo.com/logo-png/51/1/yandex-tracker-logo-png_seeklogo-512155.png
+
+Логотипы используются для обозначения соответствующих сервисов в локальном интерфейсе. Скачаны 18 сентября 2026.
+
+- Админка Яндекс 360: https://admin.yandex.ru/favicon.ico — официальный PNG 32×32, сохранён как yandex-admin.png 19 сентября 2026.
+
+- Алиса AI для бизнеса: https://alice.yandex.ru/favicon.ico — официальная иконка сервиса.
+
+- Яндекс Календарь: https://calendar.360.yandex.ru/favicon.ico — официальная иконка сервиса, сохранена 21 сентября 2026.
+
+- Story Simulation Studio: PNG с прозрачностью, предоставленный пользователем 19 сентября 2026. Используется без изменения изображения на экране входа и в меню.
+
+- Телемост, контурная иконка 16×16: символ `ya-360-telemost-outline-sm`, извлечён из HTML страницы, предоставленного пользователем. Сохранён отдельным SVG с исходным `currentColor`.
+
+- ChatGPT: https://cdn.oaistatic.com/assets/favicon-l4nq08hd.svg — официальная иконка сервиса, 24 сентября 2026. Логотип принадлежит OpenAI; используется только для обозначения подключения ChatGPT.
+
+- tired of chats: original PNG supplied by the user on 2026-10-01. Displayed in the sidebar and mobile header; source pixels preserved.
+
+- tired-of-chats-v2.png: replacement PNG supplied by the user on 2026-10-01, preserved unchanged.

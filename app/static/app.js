@@ -1,0 +1,170 @@
+import {summaryMarkup} from './summary-format.js';
+import {compressionView} from './compression.js';
+import {timingText} from './run-timing.js';
+import {modelOptions} from './codex-models.js';
+const paths = {
+ chats:'<path d="M21 11a8 8 0 0 1-8 8H7l-5 3 2-6a8 8 0 1 1 17-5Z"/><path d="M8 9h8M8 13h5"/>',
+ users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/><circle cx="9" cy="7" r="4"/>',
+ user:'<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"/>',
+ sliders:'<path d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M1 10h6m2 2h6m2 4h6"/>',
+ send:'<path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/>',
+ dashboard:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+ search:'<circle cx="10.5" cy="10.5" r="7.5"/><path d="m16 16 5 5"/>',
+ refresh:'<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 6a8 8 0 0 1 13 3M18 18A8 8 0 0 1 5 15"/>',
+ check:'<path d="m5 12 4 4L19 6"/>',
+ info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/>',
+ book:'<path d="M4 3h7a3 3 0 0 1 3 3v15a3 3 0 0 0-3-3H4V3Zm16 0h-3a3 3 0 0 0-3 3m0 15a3 3 0 0 1 3-3h3V3Z"/>',
+ bot:'<rect x="3" y="7" width="18" height="14" rx="4"/><path d="M12 7V3m-2 0h4M8 12v2m8-2v2m-8 3h8"/>',
+ clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+ play:'<path d="m8 4 13 8-13 8V4Z"/>',
+ stop:'<rect x="5" y="5" width="14" height="14" rx="2"/>',
+ flask:'<path d="M9 3h6m-5 0v7l-5 9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2l-5-9V3M8 15h8"/>',
+ arrow:'<path d="M5 12h14m-5-5 5 5-5 5"/>',
+ lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+ menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',
+ sparkle:'<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/>',
+ layers:'<path d="m12 3 10 5-10 5L2 8l10-5Zm-9 10 9 5 9-5M3 18l9 5 9-5"/>',
+ day:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/>',
+ circle:'<circle cx="12" cy="12" r="8"/>',
+ external:'<path d="M15 3h6v6m-10 4L21 3M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/>',
+};
+const icon = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[n]||paths.circle}</svg>`;
+const esc = v => String(v??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const copy = x => structuredClone(x);
+const days = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const fullDays=['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
+const tabs=[['chats','chats','Чаты'],['summary','sliders','Настройки саммари'],['destinations','send','Направление'],['dashboard','dashboard','Дашборд']];
+let data=null, config=null, selected=new Set(), page=sessionStorage.getItem('chat-studio-page')||'chats';
+if(!tabs.some(t=>t[0]===page)) page='chats';
+let codexCatalog={models:null,error:'',loading:false},stefaniaCatalog={models:null,error:'',loading:false},receivedAt=Date.now();
+let dailyDay=0;
+let query='', onlySelected=false, hideTelemost=localStorage.getItem('chat-studio-hide-telemost')!=='false', busy='', mobile=false, limits={external:60,group:60}, toastTimer;
+const dirty=()=>!!data&&(JSON.stringify(config)!==JSON.stringify(data.settings)||JSON.stringify([...selected].sort())!==JSON.stringify([...data.selected].sort()));
+const fmt=(date,short=false)=>date?new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',...(short?{}:{day:'2-digit',month:'short'}),hour:'2-digit',minute:'2-digit'}).format(new Date(date)):'ещё не было';
+const checked=v=>v?'checked':'';
+const disabled=v=>v?'disabled':'';
+function toast(message,error=false){const el=document.querySelector('#toast');el.textContent=message;el.className=`show ${error?'error':''}`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.className='',6500);}
+async function api(path,body){const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-CSRF-Token':data.csrf}:{},body:body?JSON.stringify(body):undefined});let value;try{value=await response.json();}catch{throw new Error('Сервер недоступен. Проверьте SSH-туннель.');}if(!response.ok)throw new Error(value.error||'Не удалось выполнить запрос');return value;}
+function accept(next,preserve=false){const wasDirty=dirty();if(data&&(data.codex?.connected!==next.codex?.connected||data.codex?.email!==next.codex?.email))codexCatalog={models:null,error:'',loading:false};data=next;receivedAt=Date.now();if(!preserve||!wasDirty){config=copy(next.settings);selected=new Set(next.selected);}}
+function pill(state,label){return `<span class="pill ${esc(state||'')}"><i></i>${esc(label)}</span>`;}
+function header(title, description='', action=''){
+ return `<div class="eyebrow">Мессенджер / ${esc(title)}</div><div class="heading"><div><h1>${esc(title)}</h1>${description?`<p>${description}</p>`:''}</div>${action}</div>`;
+}
+function button(label,action,cls='',ico='',isDisabled=false){return `<button class="btn ${cls}" data-action="${action}" aria-label="${esc(label)}" ${disabled(isDisabled)}>${ico?icon(ico):''}<span>${label}</span></button>`;}
+
+function codexConnection(){
+ const c=data.codex||{};
+ return `<div class="codex-connection" aria-live="polite">${c.connected
+   ? `<span class="small muted">${esc(c.email)}${c.plan?' · '+esc(c.plan):''}</span>${button('Выйти','codex-logout','text','',!!busy)}`
+   : c.pending
+     ? `<span>Код: <strong>${esc(c.pending.code)}</strong></span><a class="btn primary" href="${esc(c.pending.url)}" target="_blank" rel="noopener noreferrer">Открыть OpenAI ↗</a>${button('Отменить','codex-logout','text','',!!busy)}`
+     : button('Войти в Codex','codex-login','outline','',!!busy)}
+   ${c.error?`<span class="job-error">${esc(c.error)}</span>`:''}</div>`;
+}
+function summaryModelField(){
+ const s=config.summary;
+ const codex=s.provider==='codex',c=codex?codexCatalog:stefaniaCatalog,connected=!codex||data.codex?.connected;
+ return `<div class="field"><label for="model">Модель ${codex?'Codex':'Стефании'}</label><select id="model" data-field="summary.model" ${disabled(!connected||c.loading||!c.models?.length)}>${modelOptions(c.models,s.model)}</select>${c.error?`<small class="job-error">${esc(c.error)}</small>`:''}</div>${connected?button('Обновить модели','refresh-models','text','refresh',c.loading||!!busy):''}`;
+}
+async function loadModels(provider,refresh=false){
+ const state=provider==='codex'?codexCatalog:stefaniaCatalog;
+ if(state.loading||(provider==='codex'&&!data.codex?.connected))return;
+ state.loading=true;
+ const draw=()=>{const el=document.querySelector('#model-field');if(el&&config.summary.provider===provider)el.innerHTML=summaryModelField();};draw();
+ try{const result=await api(`/api/${provider}/models`,refresh?{}:undefined);state.models=result.models||[];state.error=result.error||'';}
+ catch(e){state.models=[];state.error=e.message;}
+ finally{state.loading=false;draw();}
+}
+function ensureModels(){if(page!=='summary')return;const provider=config.summary.provider,state=provider==='codex'?codexCatalog:stefaniaCatalog;if((provider!=='codex'||data.codex?.connected)&&state.models===null&&!state.loading)void loadModels(provider);}
+function jobTiming(j){return `<p class="small muted job-timing" data-job-timing="${esc(j.id)}">${esc(timingText(j,(Date.now()-receivedAt)/1000))}</p>`;}
+function summaryModelCard(){
+ const s=config.summary,codex=s.provider==='codex';
+ const ready=codex?data.codex?.connected:(data.settings.summary.provider==='stefania'&&data.readiness.model.ready);
+ return `<section class="card model-card"><h2>Модель</h2><div class="choice-grid model-choices">${[['stefania','sparkle','Стефания'],['codex','circle','Codex']].map(([id,ico,title])=>`<button class="choice ${s.provider===id?'active':''}" data-setting="summary.provider" data-value="${id}" aria-pressed="${s.provider===id}">${icon(ico)}<strong>${title}</strong></button>`).join('')}</div><div id="model-field">${summaryModelField()}</div><span id="model-ready">${pill(ready?'ok':'idle',ready?'Подключена':'Нужен доступ')}</span>${codex?`<div id="codex-connection">${codexConnection()}</div>`:''}</section>`;
+}
+function render(){if(!data)return;document.title=`${tabs.find(t=>t[0]===page)[2]} · Саммаризатор чатов`;
+ document.querySelector('#app').innerHTML=`<div class="scrim ${mobile?'show':''}" data-action="menu-close"></div><aside class="rail ${mobile?'open':''}" aria-label="Главное меню"><div class="brand"><span class="brand-logo"><img src="/assets/tired-of-chats-v2.png" alt="tired of chats" width="1600" height="1000"></span></div><div class="rail-caption">САММАРИЗАТОР ЧАТОВ</div><nav>${tabs.map(([id,ico,title])=>`<button class="navitem ${page===id?'active':''}" data-page="${id}" ${page===id?'aria-current="page"':''}>${icon(ico)}<span>${title}</span>${id==='chats'?`<span class="navbadge" id="nav-count">${selected.size}</span>`:''}</button>`).join('')}</nav><div class="rail-services"><a href="https://messenger.yandex-team.ru/" target="_blank" rel="noopener noreferrer">${icon('chats')}Мессенджер</a><a href="https://wiki.yandex-team.ru/" target="_blank" rel="noopener noreferrer">${icon('book')}Wiki</a></div><div class="profile"><div class="avatar">${esc(data.user.login.slice(0,2).toUpperCase())}</div><div class="grow"><div class="profile-name">${esc(data.user.display_name)}</div><small>Корпоративный профиль</small></div>${icon('lock')}</div></aside><div class="mobile-bar"><button aria-label="Открыть меню" data-action="menu">${icon('menu')}</button><span class="brand-logo"><img src="/assets/tired-of-chats-v2.png" alt="tired of chats" width="1600" height="1000"></span></div><main class="main"><fieldset class="work" ${disabled(!!busy)}>${({chats:chatsPage,summary:summaryPage,destinations:destinationsPage,dashboard:dashboardPage}[page])()}</fieldset></main><footer class="savebar"><div id="save-status"></div><div class="save-actions"><span class="save-summary" id="save-summary"></span><button class="btn primary" data-action="save" id="save-button">${icon('check')}Сохранить${page==='chats'?' выбор':''}</button></div></footer>`;
+ updateSave();if(page==='chats')renderLists();ensureModels();}
+function updateSave(){if(!data)return;const unsaved=dirty();document.querySelector('#save-status').innerHTML=`<div class="save-status ${unsaved?'dirty':''}">${busy?'<span class="loader"></span>':icon(unsaved?'circle':'check')}<span>${busy?({save:'Сохраняем…',sync:'Обновляем чаты…',check:'Проверяем подключения…',stop:'Останавливаем…',start:'Запускаем…',test:'Запускаем тест…',testweek:'Запускаем тест за неделю…','codex-login':'Подключаем Codex…','codex-logout':'Отключаем Codex…'}[busy]):unsaved?'Есть несохранённые изменения':`Сохранено на сервере · ${fmt(data.updated,true)}`}</span></div>`;
+ document.querySelector('#save-summary').textContent=`Выбрано чатов: ${selected.size}`;
+ document.querySelector('#save-button').disabled=!unsaved||!!busy;
+ const badge=document.querySelector('#nav-count');if(badge)badge.textContent=selected.size;}
+function chatsPage(){
+ return `${header('Чаты','',button('Обновить список','sync','outline','refresh',!!busy))}
+ ${data.chats.some(c=>c.kind==='private'&&selected.has(c.id))?`<div class="notice"><div><strong>Ранее выбранные личные чаты</strong>${data.chats.filter(c=>c.kind==='private'&&selected.has(c.id)).map(c=>`<label class="check"><input type="checkbox" data-chat="${esc(c.id)}" checked>${esc(c.title)}</label>`).join('')}</div></div>`:''}
+ <div class="toolbar"><div class="search">${icon('search')}<input type="search" id="chat-search" aria-label="Поиск чатов" placeholder="Поиск чатов" value="${esc(query)}"></div><label class="check"><input type="checkbox" id="only-selected" ${checked(onlySelected)}>Только выбранные</label><label class="check"><input type="checkbox" id="hide-telemost" ${checked(hideTelemost)}>Скрыть встречи Телемоста</label></div>
+ <div class="grid-two chat-grid"><div class="card chat-card" id="external-list"></div><div class="card chat-card" id="group-list"></div></div>`;
+}
+function matches(c){return (!onlySelected||selected.has(c.id))&&(!hideTelemost||!c.is_telemost)&&(!query||`${c.title} ${c.nickname}`.toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru')));}
+function renderLists(){for(const kind of ['external','group']){const all=data.chats.filter(c=>c.kind===kind), filtered=all.filter(matches), shown=filtered.slice(0,limits[kind]), selectedN=all.filter(c=>selected.has(c.id)).length;
+ document.querySelector(`#${kind}-list`).innerHTML=`<div class="card-head"><div class="chat-title">${icon(kind==='external'?'external':'users')}<h2>${kind==='external'?'Внешние чаты':'Групповые чаты'}</h2></div><div class="chat-head-count">${kind==='group'?`<span class="toolbar-total">Всего: ${data.chats.length}</span>`:''}<span class="count">${all.length}</span></div></div><div class="list-tools"><span class="small muted">Выбрано ${selectedN}</span><button class="btn text" data-action="select-filtered" data-kind="${kind}" ${disabled(!filtered.length||!!busy)}>${filtered.length&&filtered.every(c=>selected.has(c.id))?'Снять выбор':'Выбрать найденные'}</button></div><div class="chat-list">${shown.length?shown.map(c=>`<label class="chat-row ${selected.has(c.id)?'selected':''} ${!c.available?'unavailable':''}"><input type="checkbox" data-chat="${esc(c.id)}" ${checked(selected.has(c.id))} ${disabled(!!busy)} aria-label="Выбрать ${esc(c.title)}"><span class="chat-avatar ${kind==='group'?'group':''}">${kind==='group'?icon('users'):esc(c.title.split(/[\s-]+/).slice(0,2).map(s=>s[0]).join('').toUpperCase())}</span><span class="chat-info"><span class="chat-name" title="${esc(c.title)}">${esc(c.title)}</span><span class="chat-meta">${!c.available?'Недоступен при последнем обновлении':kind==='external'?esc(c.nickname?`@${c.nickname}`:c.members?`Участников: ${c.members}`:'Внешний чат'):`Участников: ${esc(c.members)}`}</span></span></label>`).join(''):`<div class="empty">${icon('chats')}<strong>${busy==='sync'?'Загружаем список…':query||onlySelected||hideTelemost?'Чаты не найдены':data.synced_at?'Пока нет чатов':'Подключим твои чаты'}</strong><p>${query||onlySelected||hideTelemost?'Попробуй другой запрос или выключи фильтр.':data.synced_at?'Здесь появятся доступные разговоры.':'Нажми «Обновить список», чтобы загрузить чаты из Мессенджера.'}</p></div>`}</div><div class="list-footer"><span>${filtered.length===all.length?`${all.length} в списке`:`Найдено ${filtered.length} из ${all.length}`}</span>${filtered.length>shown.length?`<button class="btn text" data-action="more" data-kind="${kind}">Показать ещё (${filtered.length-shown.length})</button>`:''}</div>`;
+ }updateSave();}
+function summaryModeCard(kind){
+ const s=config.summary[kind],daily=kind==='daily';
+ const view=compressionView(s.compression,kind,daily?'days':s.group_by);
+ const title=daily?'Ежедневное саммари':'Недельное саммари';
+ return `<section class="card summary-mode" aria-label="${title}"><div class="card-head"><h2>${title}</h2><span class="range-value" id="compression-value-${kind}">${s.compression}%</span></div>
+ <div class="field"><label for="compression-${kind}">Сила сжатия</label><input type="range" id="compression-${kind}" min="0" max="100" step="1" value="${s.compression}" data-field="summary.${kind}.compression" data-compression-kind="${kind}"></div>
+ <div class="range-labels"><span>Подробнее</span><span>Только заголовки</span></div>
+ ${daily?'':`<div class="field weekly-group"><label>Группировать неделю</label><div class="choice-grid">${[['days','day','По дням'],['chats','chats','По чатам']].map(([id,ico,label])=>`<button class="choice ${s.group_by===id?'active':''}" data-setting="summary.weekly.group_by" data-value="${id}" aria-pressed="${s.group_by===id}">${icon(ico)}<strong>${label}</strong></button>`).join('')}</div></div>`}
+ <div class="preview"><h3>Пример</h3><pre class="summary-result" id="compression-preview-${kind}">${summaryMarkup(view.preview)}</pre></div></section>`;
+}
+function summaryPage(){
+ return `${header('Настройки саммари')}${summaryModelCard()}<div class="grid-two summary-modes">${summaryModeCard('daily')}${summaryModeCard('weekly')}</div><section class="card compact-card"><label class="check"><input type="checkbox" id="mark-read" data-field="summary.mark_read" ${checked(config.summary.mark_read)}><strong>После отправки отмечать сообщения прочитанными</strong></label></section>`;
+}
+function connectionInline(key){
+ const c=data.connections[key];
+ if(!c)return pill('','Не проверено');
+ return pill(c.state==='found'?'ok':c.state,c.label);
+}
+function destinationsPage(){
+ const d=config.destinations,daily=config.schedule.daily,weekly=config.schedule.weekly;
+ return `${header('Направление','',button('Проверить доступ','check','outline','refresh',!!busy))}
+ <div class="grid-two destination-grid">
+ <section class="card destination-card"><div class="destination-title row">${icon('bot')}<strong>Личный бот</strong><div class="grow"></div>${connectionInline('bot')}</div><div class="field"><label for="bot-login">Логин бота</label><input id="bot-login" data-field="destinations.bot_login" value="${esc(d.bot_login)}" placeholder="robot-name" maxlength="49"></div></section>
+ <section class="card destination-card"><div class="destination-title row">${icon('book')}<strong>Персональная Wiki</strong><div class="grow"></div>${connectionInline('wiki')}</div><div class="field"><label for="wiki-slug">Раздел для страниц</label><input id="wiki-slug" data-field="destinations.wiki_slug" value="${esc(d.wiki_slug)}" placeholder="users/логин/chat-summaries" maxlength="300"></div></section></div>
+ <section class="card schedule-card"><div class="card-head"><h2>Расписание</h2><span class="small muted">МСК</span></div>
+ <div class="schedule-grid"><div class="schedule-block daily-block"><label class="switch-line"><strong>Ежедневно</strong><input type="checkbox" class="switch" data-field="schedule.daily.enabled" aria-label="Включить ежедневное расписание" ${checked(daily.enabled)}></label><div class="schedule-days-toolbar"><span class="small muted">Дни отправки</span><button class="btn text" data-action="workdays" type="button">Пн–Пт</button></div><div class="weekday-grid">${days.map((day,i)=>`<label class="weekday-chip ${daily.days.includes(i)?'selected':''}"><input type="checkbox" data-day="${i}" aria-label="Отправлять в ${fullDays[i]}" ${checked(daily.days.includes(i))}><span>${day}</span></label>`).join('')}</div><div class="weekday-select"><div class="field"><label for="daily-day">Время для дня</label><select id="daily-day" aria-label="День для настройки времени">${fullDays.map((day,i)=>`<option value="${i}" ${dailyDay===i?'selected':''}>${day} · ${daily.times[i]}</option>`).join('')}</select></div><div class="field"><label for="daily-time">Время</label><input type="time" id="daily-time" data-day-time="${dailyDay}" value="${daily.times[dailyDay]}" aria-label="Время ежедневного саммари: ${fullDays[dailyDay]}"></div></div><div class="schedule-targets"><label class="schedule-target"><span>Личный бот</span><input type="checkbox" class="switch" data-field="schedule.daily.bot" aria-label="Личный бот для ежедневного саммари" ${checked(daily.bot)}></label><label class="schedule-target"><span>Wiki</span><input type="checkbox" class="switch" data-field="schedule.daily.wiki" aria-label="Wiki для ежедневного саммари" ${checked(daily.wiki)}></label></div></div>
+ <div class="schedule-block weekly-block"><label class="switch-line"><strong>Еженедельно</strong><input type="checkbox" class="switch" data-field="schedule.weekly.enabled" aria-label="Включить недельное расписание" ${checked(weekly.enabled)}></label><div class="weekday-select"><div class="field"><label for="weekly-day">День отправки</label><select id="weekly-day" data-field="schedule.weekly.day">${fullDays.map((day,i)=>`<option value="${i}" ${weekly.day===i?'selected':''}>${day}</option>`).join('')}</select></div><div class="field"><label for="weekly-time">Время</label><input type="time" id="weekly-time" data-field="schedule.weekly.time" value="${weekly.time}"></div></div><div class="schedule-targets"><label class="schedule-target"><span>Личный бот</span><input type="checkbox" class="switch" data-field="schedule.weekly.bot" aria-label="Личный бот для недельного саммари" ${checked(weekly.bot)}></label><label class="schedule-target"><span>Wiki</span><input type="checkbox" class="switch" data-field="schedule.weekly.wiki" aria-label="Wiki для недельного саммари" ${checked(weekly.wiki)}></label></div></div></div></section>`;
+}
+function dashboardPage(){
+ const daily=config.schedule.daily,weekly=config.schedule.weekly,active=activeJob();
+ return `${header('Дашборд','',button('Проверить доступ','check','outline','refresh',!!busy))}
+ <div class="service-grid">${[['messenger','chats','Мессенджер'],['bot','bot','Личный бот'],['wiki','book','Wiki']].map(([key,ico,title])=>`<section class="card service-card"><div class="row">${icon(ico)}<strong>${title}</strong><div class="grow"></div>${connectionInline(key)}</div></section>`).join('')}</div>
+ <div class="dashboard-grid"><section class="card control-card"><div class="card-head"><h2>Управление</h2>${pill(active?'found':data.readiness.ready?'ok':'idle',active?'Выполняется':data.readiness.ready?'Готово':'Нужна настройка')}</div>${active?`<p class="status-description">${esc(active.progress)}</p>${jobTiming(active)}`:data.readiness.ready?'':`<p class="status-description">${esc(data.readiness.reasons.join(' '))}</p>`}<div class="dashboard-counts"><strong>${selected.size}</strong> чатов = <strong>${data.chats.filter(c=>c.kind==='external'&&selected.has(c.id)).length}</strong> внешних + <strong>${data.chats.filter(c=>c.kind==='group'&&selected.has(c.id)).length}</strong> групповых</div><div class="control-actions">${button('Запустить','start','primary','play',!!busy||!!active)}${button('Глобальная остановка','stop','danger','stop',!!busy)}${button('Тест за сегодня','test','outline','flask',!!busy||!!active)}${button('Тест за прошлую неделю','testweek','outline','flask',!!busy||!!active)}</div></section>
+ <section class="card dashboard-schedule"><div class="card-head"><h2>Расписание</h2></div><div class="schedule-row"><strong>Ежедневно</strong>${pill(daily.enabled&&!data.stopped?'ok':'',daily.enabled?(data.stopped?'Ожидает запуска':'Активно'):'Выключено')}</div><div class="schedule-row"><strong>Еженедельно</strong>${pill(weekly.enabled&&!data.stopped?'ok':'',weekly.enabled?(data.stopped?'Ожидает запуска':'Активно'):'Выключено')}</div><button class="btn text card-link" data-page="destinations">Настроить ${icon('arrow')}</button></section></div>
+ ${updatesView()}${jobsView()}<details class="card activity-log"><summary>Журнал действий</summary>${data.events.slice(0,8).map(e=>`<div class="event"><span class="event-marker"></span><div><p>${esc(e.text)}</p><small>${fmt(e.created)} МСК</small></div></div>`).join('')}</details>`;
+}
+function updatesView(){const u=data.updates||{};if(!u.configured)return '';const installing=u.installing||u.last_result?.status==='installing',available=u.available&&!installing;return `<section class="card spaced updates-card"><div class="card-head"><h2>Обновления</h2>${pill(available?'found':installing?'':'ok',available?`Доступна ${u.latest}`:installing?'Устанавливается':`Версия ${u.current}`)}</div><div class="row"><span class="small muted">${esc(u.last_result?.status==='failed'?u.last_result.error:u.error||'')}</span><div class="grow"></div>${button('Проверить','update-check','outline','refresh',u.checking||installing||!!busy)}${available?button('Скачать и установить','update-install','primary','',!!busy):''}</div></section>`;}
+function activeJob(){return (data?.jobs||[]).find(j=>['queued','collecting','summarizing','sending'].includes(j.status));}
+const jobLabels={queued:'В очереди',collecting:'Читаем историю',summarizing:'Готовим саммари',sending:'Отправляем',completed:'Отправлено',failed:'Ошибка',cancelled:'Остановлено',interrupted:'Прервано при перезапуске'};
+function jobRow(j){
+ const title=j.kind==='weekly'?'Недельное саммари':j.kind==='daily'?'Ежедневное саммари':'Саммари за сегодня';
+ const state=j.status==='completed'?'ok':j.status==='failed'?'error':'idle';
+ const counts=[j.stats.messages!==undefined?`${j.stats.messages} сообщений`:null,j.stats.threads!==undefined?`${j.stats.threads} веток`:null].filter(Boolean).join(' · ');
+ const deliveries=j.deliveries.map(d=>`${d.target==='bot'?'Бот':'Wiki'}: ${{confirmed:'доставлено',unknown:'нет подтверждения',sending:'отправляется',failed:'ошибка',cancelled:'отменено'}[d.status]||d.status}`).join(' · ');
+ const running=['queued','collecting','summarizing','sending'].includes(j.status);
+ return `<table class="job-table" aria-label="${esc(title)}"><tbody><tr><th scope="row">${title}</th><td>${fmt(j.start)}${j.kind==='weekly'?' — '+fmt(j.end):''}</td><td class="job-status">${pill(state,jobLabels[j.status]||j.status)}</td></tr><tr class="job-second"><td colspan="3"><span class="job-progress ${j.error?'job-error':''}" title="${esc(j.error||j.progress)}">${esc(j.error||j.progress)}</span>${counts?`<span class="job-counts">${counts}</span>`:''}${deliveries?`<span class="job-deliveries">${esc(deliveries)}</span>`:''}${running?jobTiming(j):''}${j.result?`<details class="job-result" data-job-id="${esc(j.id)}"><summary>Саммари</summary><pre class="summary-result">${summaryMarkup(j.result)}</pre></details>`:''}</td></tr></tbody></table>`;
+}
+function jobsView(){
+ const jobs=data.jobs||[];
+ const dayKey=value=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
+ const today=dayKey(Date.now()),current=jobs.filter(j=>dayKey(j.created)===today),past=jobs.filter(j=>dayKey(j.created)!==today);
+ return `<section class="card spaced jobs-card"><div class="card-head"><h2>Саммари и запуски</h2></div>${current.map(jobRow).join('')}${past.length?`<details class="past-jobs"><summary>Прошлые дни · ${past.length}</summary>${past.map(jobRow).join('')}</details>`:''}${!jobs.length?'<div class="empty"><strong>Запусков пока нет</strong></div>':''}</section>`;
+}
+function setField(path,value){const parts=path.split('.');let target=config;for(const key of parts.slice(0,-1))target=target[key];target[parts.at(-1)]=value;}
+function syncDestinationSelection(){for(const target of ['bot','wiki'])config.destinations[target]=config.schedule.daily[target]||config.schedule.weekly[target];}
+async function save(silent=false){syncDestinationSelection();busy='save';render();try{accept(await api('/api/settings',{settings:config,selected:[...selected],revision:data.revision}));if(!silent)toast('Настройки и выбор чатов сохранены');return true;}catch(e){toast(e.message,true);return false;}finally{busy='';render();}}
+async function action(name){if(busy)return;if(name==='refresh-models'){await loadModels(config.summary.provider,true);return;}if(name==='save'){await save();return;}if(['update-check','update-install'].includes(name)){if(name==='update-install'&&dirty()&&!await save(true))return;busy=name;render();try{accept(await api(name==='update-check'?'/api/updates/check':'/api/updates/install',name==='update-check'?{}:{version:data.updates.latest}),true);toast(name==='update-check'?'Проверка обновлений завершена':'Установка обновления запущена');}catch(e){toast(e.message,true);}finally{busy='';render();}return;}if(['codex-login','codex-logout'].includes(name)){busy=name;render();try{accept(await api(name==='codex-login'?'/api/codex/login':'/api/codex/logout',{}),true);toast(name==='codex-login'?'Вход Codex: следуй инструкции в настройках':'Подключение Codex отключено');}catch(e){toast(e.message,true);}finally{busy='';render();}return;}if(['sync','check','stop','start','test','testweek'].includes(name)){
+ if(['check','start','test','testweek'].includes(name)&&dirty()&&!await save(true))return;
+ busy=name;render();try{const endpoint={sync:'/api/chats/refresh',check:'/api/connections/check',stop:'/api/control/stop',start:'/api/control/start',test:'/api/control/test-today',testweek:'/api/control/test-last-week'}[name];accept(await api(endpoint,['start','test','testweek'].includes(name)?{request_id:crypto.randomUUID()}:{}),name==='sync');toast({sync:'Список чатов обновлён',check:'Проверка подключений завершена',stop:'Остановка запрошена, оба расписания выключены',start:'Саммари за сегодня запущено',test:'Тест за сегодня запущен с отправкой',testweek:'Тест за прошлую неделю запущен с отправкой'}[name]);}catch(e){toast(e.message,true);}finally{busy='';render();}return;}}
+document.addEventListener('click',async e=>{const nav=e.target.closest('[data-page]');if(nav){page=nav.dataset.page;sessionStorage.setItem('chat-studio-page',page);mobile=false;render();window.scrollTo(0,0);return;}const setting=e.target.closest('[data-setting]');if(setting){if(setting.dataset.setting==='summary.provider'&&config.summary.provider!==setting.dataset.value)config.summary.model='';setField(setting.dataset.setting,setting.dataset.value);render();return;}const el=e.target.closest('[data-action]');if(!el||el.disabled)return;const name=el.dataset.action;if(name==='menu'||name==='menu-close'){mobile=name==='menu';render();return;}if(name==='select-filtered'){const rows=data.chats.filter(c=>c.kind===el.dataset.kind&&matches(c));const remove=rows.every(c=>selected.has(c.id));for(const c of rows)remove?selected.delete(c.id):selected.add(c.id);renderLists();return;}if(name==='more'){limits[el.dataset.kind]+=60;renderLists();return;}if(name==='workdays'){config.schedule.daily.days=[0,1,2,3,4];render();return;}await action(name);});
+document.addEventListener('input',e=>{const el=e.target;if(el.id==='chat-search'){query=el.value;limits={external:60,group:60};renderLists();return;}if(el.dataset.field){let value=el.type==='checkbox'?el.checked:el.value;if(['summary.daily.compression','summary.weekly.compression','schedule.weekly.day'].includes(el.dataset.field))value=Number(value);setField(el.dataset.field,value);if(/^schedule\.(daily|weekly)\.(bot|wiki)$/.test(el.dataset.field))syncDestinationSelection();if(el.dataset.compressionKind){const kind=el.dataset.compressionKind,view=compressionView(value,kind,kind==='weekly'?config.summary.weekly.group_by:'days');document.querySelector(`#compression-value-${kind}`).textContent=`${value}%`;document.querySelector(`#compression-preview-${kind}`).innerHTML=summaryMarkup(view.preview);}updateSave();}if(el.dataset.dayTime!==undefined){const day=Number(el.dataset.dayTime),daily=config.schedule.daily;daily.times[day]=el.value;const option=document.querySelector(`#daily-day option[value="${day}"]`);if(option)option.textContent=fullDays[day]+' · '+el.value;updateSave();}});
+document.addEventListener('change',e=>{const el=e.target;if(el.id==='daily-day'){dailyDay=Number(el.value);render();return;}if(el.dataset.chat){el.checked?selected.add(el.dataset.chat):selected.delete(el.dataset.chat);const scrolls=[...document.querySelectorAll('.chat-list')].map(n=>n.scrollTop);renderLists();document.querySelectorAll('.chat-list').forEach((n,i)=>n.scrollTop=scrolls[i]);return;}if(el.id==='only-selected'){onlySelected=el.checked;renderLists();return;}if(el.id==='hide-telemost'){hideTelemost=el.checked;localStorage.setItem('chat-studio-hide-telemost',String(hideTelemost));renderLists();return;}if(el.dataset.day!==undefined){const day=Number(el.dataset.day);config.schedule.daily.days=el.checked?[...config.schedule.daily.days,day].sort():config.schedule.daily.days.filter(d=>d!==day);render();}});
+window.addEventListener('beforeunload',e=>{if(dirty()){e.preventDefault();e.returnValue='';}});
+async function init(){try{accept(await api('/api/bootstrap'));render();if(!data.connections.messenger){await action('check');}if(!data.synced_at)await action('sync');}catch(e){document.querySelector('#app').innerHTML=`<div class="initial"><div><h2>Не удалось подключиться</h2><p class="muted spaced">${esc(e.message)}</p><button class="btn primary spaced" data-action="retry">Повторить</button></div></div>`;document.querySelector('[data-action=retry]').onclick=init;}}
+init();
+
+let polling=false;setInterval(async()=>{if(polling||busy||document.hidden)return;polling=true;try{const before=JSON.stringify(data.jobs),updatesBefore=JSON.stringify(data.updates),authBefore=JSON.stringify(data.codex);accept(await api('/api/bootstrap'),true);if(page==='summary'&&config.summary.provider==='codex'&&authBefore!==JSON.stringify(data.codex)){document.querySelector('#codex-connection').innerHTML=codexConnection();document.querySelector('#model-ready').innerHTML=pill(data.codex.connected?'ok':'idle',data.codex.connected?'Подключена':'Нужен доступ');document.querySelector('#model-field').innerHTML=summaryModelField();ensureModels();}if(page==='dashboard'&&(before!==JSON.stringify(data.jobs)||updatesBefore!==JSON.stringify(data.updates))){const pastOpen=document.querySelector('.past-jobs')?.open;const opened=new Set([...document.querySelectorAll('.job-result[open]')].map(d=>d.dataset.jobId));render();const past=document.querySelector('.past-jobs');if(past)past.open=!!pastOpen;document.querySelectorAll('.job-result').forEach(d=>d.open=opened.has(d.dataset.jobId));}}catch{}finally{polling=false;}},3000);
+
+setInterval(()=>{if(document.hidden||page!=='dashboard'||!data)return;for(const el of document.querySelectorAll('[data-job-timing]')){const job=data.jobs.find(j=>j.id===el.dataset.jobTiming);if(job)el.textContent=timingText(job,(Date.now()-receivedAt)/1000);}},1000);
