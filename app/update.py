@@ -5,6 +5,7 @@ credentials live outside the application directory and are never copied here.
 """
 import json
 import io
+import fcntl
 import os
 import re
 import shlex
@@ -169,6 +170,16 @@ class Updates:
             raise
 
     def apply(self, tag):
+        lock_path = self.data_dir / 'update.lock'
+        with lock_path.open('a+') as lock:
+            lock_path.chmod(0o600)
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise UpdateError('Другое обновление уже выполняется') from None
+            return self._apply_locked(tag)
+
+    def _apply_locked(self, tag):
         if not TAG.fullmatch('refs/tags/' + tag) or version(tag) <= version(__version__):
             raise UpdateError('Нужна новая версия в формате vX.Y.Z')
         if tag != self.latest():

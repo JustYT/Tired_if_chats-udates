@@ -31,7 +31,7 @@ Codex-подписки нужны `/usr/bin/bwrap`, `/usr/bin/prlimit` и уст
 Клонируй закреплённый релиз прямо на целевую ВМ и запусти:
 
 ```sh
-git clone --branch v2.2.0 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
+git clone --branch v2.2.1 --depth 1 https://github.com/JustYT/Tired_if_chats-udates.git chat-summarizer-source
 cd chat-summarizer-source
 ./install.sh STAFF_LOGIN
 ```

@@ -199,7 +199,8 @@ class Application:
         elif route == '/api/updates/install':
             fields(body, ['version'])
             tag = body['version']
-            if not self.updates or tag != self.update_status['latest'] or not self.update_status['available']:
+            if (not self.updates or self.update_status['installing'] or
+                    tag != self.update_status['latest'] or not self.update_status['available']):
                 raise UpdateError('Сначала проверьте доступную версию')
             if any(job['status'] in ACTIVE for job in self.engine.jobs.list(principal.login)):
                 raise Conflict('Дождитесь окончания текущей саммаризации')

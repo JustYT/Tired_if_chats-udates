@@ -66,6 +66,10 @@ if [ -f "$root/updates.json" ] || [ -f "$root/updates/deploy_key" ]; then
         echo 'Incomplete update configuration in archive' >&2
         exit 1
     fi
+    if ! command -v git >/dev/null 2>&1 || ! command -v systemd-run >/dev/null 2>&1; then
+        echo 'Git and systemd-run are required for automatic updates' >&2
+        exit 1
+    fi
 fi
 case "$install_dir$data_dir" in
     *[[:space:]]*|*\;*|*\"*|*\\*) echo 'Unsupported path characters' >&2; exit 2 ;;
