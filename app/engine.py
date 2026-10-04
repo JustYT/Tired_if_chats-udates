@@ -1,5 +1,6 @@
 """Worker, Moscow calendar scheduling and stop boundary."""
 import threading
+import time
 import uuid
 from datetime import datetime,timedelta
 from .jobs import Jobs, ACTIVE
@@ -60,6 +61,9 @@ class Engine:
 
     def launch(self,kind='today',request_id=None,slot=None,arm=False):
         with self.gate:
+            marker = self.store.path.parent / 'update-maintenance'
+            if marker.exists() and time.time() - marker.stat().st_mtime < 900:
+                raise Conflict('Обновление выполняется. Запуск саммари временно недоступен.')
             login=self.principal.login;snap=self.store.snapshot(login)
             ready=self.readiness(snap,kind,self.splitty.check(fresh=True))
             if not ready['ready']:raise Conflict(' '.join(ready['reasons']))

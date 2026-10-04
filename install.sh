@@ -61,13 +61,28 @@ if [ -e "$data_dir/updates.json" ] || [ -e "$data_dir/update_deploy_key" ]; then
     echo "Data directory already contains update credentials: $data_dir" >&2
     exit 1
 fi
-if [ -f "$root/updates.json" ] || [ -f "$root/updates/deploy_key" ]; then
-    if [ ! -f "$root/updates.json" ] || [ ! -f "$root/updates/deploy_key" ]; then
-        echo 'Incomplete update configuration in archive' >&2
+if [ -e "$root/updates/deploy_key" ]; then
+    echo 'This installer accepts signed public updates without a private key.' >&2
+    exit 1
+fi
+if [ -f "$root/updates.json" ]; then
+    if [ ! -f "$root/app/release_signing.pub" ]; then
+        echo 'Public release signing key is missing from archive' >&2
         exit 1
     fi
-    if ! command -v git >/dev/null 2>&1 || ! command -v systemd-run >/dev/null 2>&1; then
-        echo 'Git and systemd-run are required for automatic updates' >&2
+    if ! python3 - "$root/updates.json" <<'PY'
+import json
+import sys
+config = json.load(open(sys.argv[1], encoding='utf-8'))
+assert config.get('repository') == 'https://github.com/JustYT/Tired_if_chats-udates.git'
+PY
+    then
+        echo 'Invalid public update configuration in archive' >&2
+        exit 1
+    fi
+    if ! command -v git >/dev/null 2>&1 || ! command -v systemd-run >/dev/null 2>&1 ||
+       ! command -v ssh-keygen >/dev/null 2>&1; then
+        echo 'Git, ssh-keygen and systemd-run are required for signed updates' >&2
         exit 1
     fi
 fi
@@ -80,10 +95,9 @@ mkdir -p "$install_dir" "$data_dir" "$unit_dir"
 cp -R "$root/app" "$install_dir/app"
 cp "$root/update.sh" "$install_dir/update.sh"
 chmod 700 "$install_dir/update.sh"
-if [ -f "$root/updates.json" ] || [ -f "$root/updates/deploy_key" ]; then
+if [ -f "$root/updates.json" ]; then
     cp "$root/updates.json" "$data_dir/updates.json"
-    cp "$root/updates/deploy_key" "$data_dir/update_deploy_key"
-    chmod 600 "$data_dir/updates.json" "$data_dir/update_deploy_key"
+    chmod 600 "$data_dir/updates.json"
     python3 - "$data_dir/updates.json" "$port" <<'PY'
 import json
 import pathlib
