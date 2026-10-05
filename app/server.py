@@ -61,11 +61,13 @@ def validate(payload, login):
     summary = config['summary']
     if isinstance(summary, dict) and 'compression' in summary:
         raise ValueError('Настройки разделены на ежедневные и недельные. Обновите страницу перед сохранением.')
-    fields(summary, ['provider', 'model', 'daily', 'weekly', 'mark_read'])
+    fields(summary, ['provider', 'model', 'reasoning_effort', 'daily', 'weekly', 'mark_read', 'unread_only'])
     if summary['provider'] not in ['stefania', 'codex']:
         raise ValueError('Неизвестный формат или провайдер')
     if not isinstance(summary['model'], str) or len(summary['model']) > 100 or not re.fullmatch(r'[a-zA-Z0-9._:/ -]*', summary['model']):
         raise ValueError('Некорректное название модели')
+    if summary['reasoning_effort'] not in ('auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'):
+        raise ValueError('Неизвестный уровень рассуждения')
     for kind in ('daily','weekly'):
         mode = summary[kind]
         fields(mode, ['compression'] if kind == 'daily' else ['compression', 'group_by'])
@@ -73,13 +75,15 @@ def validate(payload, login):
             raise ValueError('Сжатие должно быть от 0 до 100')
     if summary['weekly']['group_by'] not in ('days', 'chats'):
         raise ValueError('Неизвестная группировка недельного саммари')
-    boolean(summary['mark_read'])
+    boolean(summary['mark_read']); boolean(summary['unread_only'])
     dest = config['destinations']
-    fields(dest, ['bot', 'wiki', 'bot_login', 'wiki_slug'])
+    fields(dest, ['bot', 'wiki', 'sender', 'bot_login', 'wiki_slug'])
     boolean(dest['bot']); boolean(dest['wiki'])
+    if dest['sender'] not in ('self', 'bot'):
+        raise ValueError('Выберите, кто отправляет саммари')
     if not isinstance(dest['bot_login'], str) or (dest['bot_login'] and not re.fullmatch(r'[a-z][a-z0-9._-]{1,48}', dest['bot_login'])):
         raise ValueError('Укажите staff-логин бота')
-    if dest['bot'] and not dest['bot_login']:
+    if dest['sender']=='bot' and dest['bot'] and not dest['bot_login']:
         raise ValueError('Для отправки в бот нужен его логин')
     slug = dest['wiki_slug']
     if not isinstance(slug, str) or len(slug)>300 or not slug.startswith(f'users/{login}/') or not re.fullmatch(r'[a-zA-Z0-9/_-]+', slug):
@@ -97,8 +101,8 @@ def validate(payload, login):
     for mode in (daily, weekly):
         boolean(mode['bot']); boolean(mode['wiki'])
         if mode['enabled'] and not (mode['bot'] or mode['wiki']):
-            raise ValueError('Для включённого расписания выберите бот или Wiki')
-    if (daily['bot'] or weekly['bot']) and not dest['bot_login']:
+            raise ValueError('Для включённого расписания выберите Мессенджер или Wiki')
+    if dest['sender']=='bot' and (daily['bot'] or weekly['bot']) and not dest['bot_login']:
         raise ValueError('Для отправки в бот нужен его логин')
     if not isinstance(daily['days'],list) or any(type(x) is not int or x not in range(7) for x in daily['days']) or len(set(daily['days'])) != len(daily['days']):
         raise ValueError('Неверные дни недели')

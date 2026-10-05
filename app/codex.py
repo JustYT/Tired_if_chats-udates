@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 from . import __version__
 
 from .history import RunError, checkpoint
-from .summarizer import SYSTEM, StefaniaModel, compression_instruction
+from .summarizer import SYSTEM, StefaniaModel, compression_instruction, scope_instruction
 
 FAILURE = 'Codex недоступен. Проверьте подключение, выбранную модель и лимит подписки.'
 
@@ -345,13 +345,15 @@ class CodexAuth:
             selected = next((m for m in catalog if m['model']==requested), None) if requested else next((m for m in catalog if m['is_default']), None)
             if not selected: raise RunError('Выбранная модель недоступна в Codex. Обновите список моделей в настройках.')
             model = selected['model']
-            effort = 'high' if 'high' in selected['efforts'] else selected['default_effort']
-            if effort not in selected['efforts']: raise RunError('Codex не сообщил доступную глубину рассуждения модели.')
+            requested_effort = settings.get('reasoning_effort', 'auto')
+            effort = ('high' if 'high' in selected['efforts'] else selected['default_effort']) if requested_effort == 'auto' else requested_effort
+            if effort not in selected['efforts']:
+                raise RunError('Выбранный уровень рассуждения недоступен для модели. Обновите настройки модели.')
             config = {'model_reasoning_effort': effort, 'features.shell_tool': False,
                       'features.exec_tool': False, 'features.multi_agent': False,
                       'web_search': 'disabled'}
             params = {'cwd': '/workspace', 'ephemeral': True, 'approvalPolicy': 'never', 'sandbox': 'read-only',
-                      'baseInstructions': SYSTEM+'\nНе используй инструменты, файлы, сеть и других агентов.\n'+compression_instruction(settings),
+                      'baseInstructions': SYSTEM+'\n'+scope_instruction(settings)+'\nНе используй инструменты, файлы, сеть и других агентов.\n'+compression_instruction(settings),
                       'config': config}
             if model: params['model'] = model
             started = rpc.request('thread/start', params, timeout=45, cancel=cancel)

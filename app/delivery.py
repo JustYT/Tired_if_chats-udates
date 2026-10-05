@@ -3,11 +3,15 @@ import json
 import os
 import re
 import html
+import math
+import time
 import urllib.request
 from datetime import datetime, timedelta
 from .summarizer import NoRedirect
 from .history import RunError, checkpoint, Cancelled, TZ
 from .vendor.wiki.wiki_client import WikiAPIError
+from .vendor.messenger.client import private_chat_id
+from .summary_links import message_link
 
 class DeliveryUnknown(RunError): pass
 
@@ -76,7 +80,7 @@ def wiki_chat_blocks(text):
                       chat.group(1)+' <strong><u>'+wiki_inline(chat.group(2))+'</u></strong>',lines)
                       for index,(chat,lines) in enumerate(groups))
 
-def wiki_document(text, *, kind='today', start=None, end=None):
+def wiki_document(text, *, kind='today', start=None, end=None, elapsed_seconds=None):
     """Only user-facing text goes into Wiki; job identity is in the unique slug."""
     names=list(dict.fromkeys(re.findall(r'^(?:➡️|🌈) \*\*\+\+(.+)\+\+\*\*$',text,re.M)))
     unescape=lambda value:re.sub(r'\\([\\`*_{}\[\]()<>#!|+])',r'\1',value)
@@ -90,9 +94,18 @@ def wiki_document(text, *, kind='today', start=None, end=None):
     if kind=='weekly':
         blocks=wiki_day_blocks(text)
         if blocks is None: blocks=wiki_chat_blocks(text)
-        if blocks is not None:return title,blocks
-    # YFM needs explicit hard breaks to preserve date/chat/topic lines.
-    return title,'  \n'.join(text.split('\n'))
+        if blocks is not None:content=blocks
+        else:content='  \n'.join(text.split('\n'))
+    else:
+        # YFM needs explicit hard breaks to preserve date/chat/topic lines.
+        content='  \n'.join(text.split('\n'))
+    if elapsed_seconds is not None:
+        if not isinstance(elapsed_seconds,(int,float)) or not math.isfinite(elapsed_seconds) or elapsed_seconds<0:
+            raise ValueError('Некорректная длительность подготовки Wiki')
+        minutes,seconds=divmod(math.ceil(elapsed_seconds),60)
+        duration=(f'{minutes} мин ' if minutes else '')+f'{seconds} сек'
+        content+='\n\n_Затраченное время: '+duration+'_'
+    return title,content
 
 def wiki_matches(page,content,job_id):
     existing=page.get('content')
@@ -133,6 +146,37 @@ class Destinations:
     def __init__(self, integrations): self.integrations=integrations
     def bot_ready(self,login):
         return bool(os.environ.get('CHAT_STUDIO_BOT_TOKEN')) and login==os.environ.get('CHAT_STUDIO_BOT_LOGIN')
+    def self_ready(self,principal):
+        try:return bool(self.integrations.credentials.get(principal,'messenger'))
+        except (AttributeError,PermissionError):return False
+    def send_self(self,principal,text,payload_id):
+        """Send only to the authenticated owner's self chat, then verify history."""
+        client=self.integrations.messenger(principal)
+        actor=client.identity()
+        if actor.get('login')!=principal.login:
+            raise RunError('Мессенджер подключён под другим пользователем.')
+        guid=actor['guid']
+        chat_id=private_chat_id(guid,guid)
+        preview=client.send_message(text,to_guid=guid,payload_id=payload_id)
+        if preview.get('status')!='preview_not_applied' or not preview.get('fingerprint'):
+            raise RunError('Не удалось проверить отправку от вашего имени.')
+        try:
+            result=client.send_message(text,to_guid=guid,payload_id=payload_id,
+                                       confirm_fingerprint=preview['fingerprint'])
+        except Exception:
+            raise DeliveryUnknown('Нет подтверждения отправки от вашего имени. Повтора нет.') from None
+        if result.get('outcome')=='rejected':
+            raise RunError('Мессенджер отклонил отправку от вашего имени.')
+        for attempt in range(5):
+            try:
+                history=client.read_history(chat_id=chat_id,limit=50)
+                match=next((m for m in history['messages'] if m.get('payload_id')==payload_id
+                            and m.get('text')==text and m.get('author_guid')==guid),None)
+                if match:
+                    return message_link({'chat_id':chat_id,'ts':match['ts']}) or str(match['ts'])
+            except Exception:pass
+            if attempt<4:time.sleep(.4)
+        raise DeliveryUnknown('Отправка от вашего имени не подтверждена в истории. Повтора нет.')
     def send_bot(self,principal,bot_login,text,payload_id):
         # Recipient comes exclusively from the authenticated principal, never the model.
         if not self.bot_ready(bot_login): raise RunError('Токен выбранного бота не подключён.')
@@ -147,12 +191,12 @@ class Destinations:
         except Exception: pass
         raise DeliveryUnknown('Нет подтверждения отправки в бот. Сообщение могло дойти; автоматического повтора нет.')
 
-    def send_wiki(self,principal,slug,text,job_id,cancel=None,*,kind='today',start=None,end=None):
+    def send_wiki(self,principal,slug,text,job_id,cancel=None,*,kind='today',start=None,end=None,elapsed_seconds=None):
         def check():
             if cancel is not None: checkpoint(cancel)
         check()
         if not slug.startswith('users/'+principal.login+'/'): raise RunError('Wiki: чужой раздел.')
-        title,content=wiki_document(text,kind=kind,start=start,end=end)
+        title,content=wiki_document(text,kind=kind,start=start,end=end,elapsed_seconds=elapsed_seconds)
         def matches(page):
             return wiki_matches(page,content,job_id) and (kind!='weekly' or page.get('title')==title)
         client=self.integrations.wiki(principal)

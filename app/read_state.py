@@ -8,7 +8,7 @@ def read_targets(messages, selected, start, end):
     latest={}
     for message in messages:
         ts=message.get('ts')
-        if (message['chat_id'] not in selected or message.get('context_only')
+        if (message['chat_id'] not in selected or message.get('context_only') or message.get('is_channel')
                 or type(ts) is not int or not lo<=ts<hi):
             continue
         parent=message.get('thread')

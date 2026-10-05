@@ -9,13 +9,15 @@ export function compressionView(strength, kind = 'daily', groupBy = 'days') {
   const topics = ['Релиз доступен всем', 'Лимиты: решение после проверки', 'Запуск перенесён, новой даты нет'];
   const colors = ['🟢', '🟡', '🔴'];
   const rows = topics.map((topic, i) => `   ${colors[i]} ${topic}${limit ? ' - ' + details[i] : ''}`);
+  const weekQuestion = `   🟡 Квота студентов: ответа пока нет${limit ? ' - Вопрос задан, ответ ожидается.' : ''}`;
+  const weekAnswer = `   🟡 Квота студентов: 5 ГБ по договору${limit ? ' - Ответ получен спустя два дня.' : ''}`;
   return {
     limit,
     description: limit ? `До ${limit} знаков на тему` : 'Только заголовки',
     preview: kind === 'weekly'
       ? groupBy === 'chats'
-        ? '🌈 **++Внешний чат++**\n' + rows[0] + '\n' + rows[2] + '\n\n➡️ **++Групповой чат++**\n' + rows[1]
-        : '**28.09.2026**\n🌈 **++Внешний чат++**\n' + rows[0] + '\n\n➡️ **++Групповой чат++**\n' + rows[1] + '\n\n**29.09.2026**\n🌈 **++Внешний чат++**\n' + rows[2]
+        ? '🌈 **++Внешний чат++**\n' + rows[0] + '\n' + rows[2] + '\n\n➡️ **++Групповой чат++**\n' + weekAnswer
+        : '**28.09.2026**\n🌈 **++Внешний чат++**\n' + rows[0] + '\n\n➡️ **++Групповой чат++**\n' + weekQuestion + '\n\n**30.09.2026**\n➡️ **++Групповой чат++**\n' + weekAnswer + '\n\n🌈 **++Внешний чат++**\n' + rows[2]
       : '**01.10.2026**\n🌈 **++Внешний чат++**\n' + rows.join('\n'),
   };
 }

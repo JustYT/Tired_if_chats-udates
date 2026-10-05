@@ -175,11 +175,12 @@ class Integrations:
                 result[chat_id] = {'id': chat_id, 'kind': 'external',
                     'title': person.get('display_name') or person.get('login') or row.get('name') or 'Внешний диалог',
                     'nickname': person.get('login') or '', 'members': 2,
-                    'is_telemost': is_telemost}
+                    'is_telemost': is_telemost, 'is_channel': False}
             else:
                 result[chat_id] = {'id': chat_id, 'kind': 'external' if external else 'group',
                     'title': row.get('name') or 'Группа без названия', 'nickname': '',
-                    'members': row.get('members_count') or 0, 'is_telemost': is_telemost}
+                    'members': row.get('members_count') or 0, 'is_telemost': is_telemost,
+                    'is_channel': row.get('channel') is True}
         return list(result.values())
 
     def chats(self, principal):

@@ -56,7 +56,10 @@ class Engine:
         if not set(snap['selected'])<=available:reasons.append('В выборе есть недоступный чат.')
         if not model['ready']:reasons.append(model['label'])
         if not targets['bot'] and not targets['wiki']:reasons.append('Выберите направление отправки.')
-        if targets['bot'] and not self.destinations.bot_ready(dest['bot_login']):reasons.append('Отправка от выбранного бота не подключена.')
+        if targets['bot'] and dest['sender']=='bot' and not self.destinations.bot_ready(dest['bot_login']):
+            reasons.append('Отправка от выбранного бота не подключена.')
+        if targets['bot'] and dest['sender']=='self' and not self.destinations.self_ready(self.principal):
+            reasons.append('Отправка от вашего имени не подключена.')
         return {'ready':not reasons,'reasons':reasons,'model':model}
 
     def launch(self,kind='today',request_id=None,slot=None,arm=False):
@@ -91,6 +94,7 @@ class Engine:
 
     def run(self,job_id,cancel):
         p=self.principal;job=self.jobs.get(p.login,job_id);snap=job['snapshot'];settings=snap['settings'];dest=settings['destinations']
+        started_at=time.time()
         targets_for_run=targets_for_kind(settings,job['kind'])
         summary=summary_for_kind(settings['summary'],job['kind'])
         timing=RunTiming(self.jobs.timing_history(p.login,summary,job['kind']))
@@ -110,7 +114,12 @@ class Engine:
             def collected(text, stats):
                 update(progress=text,stats=stats)
                 timing.advance()
-            messages,stats=collect(self.integrations,p,chats,start,end,cancel,collected)
+            unread_only=summary.get('unread_only',False)
+            messages,stats=(collect(self.integrations,p,chats,start,end,cancel,collected,unread_only=True)
+                            if unread_only else collect(self.integrations,p,chats,start,end,cancel,collected))
+            if unread_only and not stats['messages']:
+                update(status='completed',progress='Непрочитанных сообщений за период нет',stats=stats)
+                return
             update(status='summarizing',progress='Готовим саммари',stats=stats)
             if not self.splitty.check(fresh=True)['ready']: raise RunError(UNAVAILABLE)
             items=summarize(self.model,messages,summary,cancel,lambda text:update(progress=text),timing=timing)
@@ -120,7 +129,8 @@ class Engine:
             targets=[]
             if targets_for_run['bot']:
                 parts=split_text(text)
-                targets.extend(('bot',n,part,len(parts)) for n,part in enumerate(parts,1))
+                sender=dest.get('sender','bot')
+                targets.extend((sender,n,part,len(parts)) for n,part in enumerate(parts,1))
             if targets_for_run['wiki']:targets.append(('wiki',1,text,1))
             marks=read_targets(messages,set(snap['selected']),start,end) if settings['summary'].get('mark_read',False) else []
             timing.stage('sending',len(targets)+len(marks))
@@ -130,8 +140,10 @@ class Engine:
                     self.jobs.delivery(p.login,job_id,target,n,'sending')
                     try:
                         if target=='bot':receipt=self.destinations.send_bot(p,dest['bot_login'],part,job_id+'-'+str(n))
+                        elif target=='self':receipt=self.destinations.send_self(p,part,job_id+'-'+str(n))
                         else:receipt=self.destinations.send_wiki(p,dest['wiki_slug'],part,job_id,cancel,
-                                                               kind=job['kind'],start=start,end=end)
+                                                               kind=job['kind'],start=start,end=end,
+                                                               elapsed_seconds=time.time()-started_at)
                     except Cancelled:
                         self.jobs.delivery(p.login,job_id,target,n,'cancelled')
                         raise

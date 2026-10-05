@@ -13,10 +13,11 @@ def now():
 
 def defaults(login, bot_login=''):
     return {
-        'summary': {'provider': 'stefania', 'model': '', 'mark_read': False,
+        'summary': {'provider': 'codex', 'model': 'gpt-6-sol', 'reasoning_effort': 'xhigh',
+                    'mark_read': False, 'unread_only': False,
                     'daily': {'compression': 50},
                     'weekly': {'compression': 50, 'group_by': 'days'}},
-        'destinations': {'bot': False, 'wiki': False, 'bot_login': bot_login,
+        'destinations': {'bot': False, 'wiki': False, 'sender': 'bot', 'bot_login': bot_login,
                          'wiki_slug': f'users/{login}/chat-summaries'},
         'schedule': {'timezone': 'Europe/Moscow',
                      'daily': {'enabled': False, 'days': [0, 1, 2, 3, 4, 5, 6],
@@ -30,6 +31,8 @@ def normalize_summary(summary):
     """Keep compression while upgrading old UI preferences to the current format."""
     result = copy.deepcopy(summary)
     result.setdefault('mark_read', False)
+    result.setdefault('unread_only', False)
+    result.setdefault('reasoning_effort', 'auto')
     if 'daily' not in result and 'weekly' not in result:
         strength = result.pop('compression', 50)
         result.pop('group_topics', None)
@@ -52,6 +55,12 @@ def normalize_schedule(schedule, destinations):
     return result
 
 
+def normalize_destinations(destinations):
+    result = copy.deepcopy(destinations)
+    result.setdefault('sender', 'bot')
+    return result
+
+
 def targets_for_kind(settings, kind):
     """Old queued jobs retain their shared destination snapshot."""
     mode = settings['schedule']['weekly' if kind == 'weekly' else 'daily']
@@ -62,7 +71,7 @@ def targets_for_kind(settings, kind):
 def summary_for_kind(summary, kind):
     normalized = normalize_summary(summary)
     mode = 'weekly' if kind=='weekly' else 'daily'
-    return {key: normalized[key] for key in ('provider','model','mark_read')} | normalized[mode]
+    return {key: normalized[key] for key in ('provider','model','reasoning_effort','mark_read','unread_only')} | normalized[mode]
 
 
 class Conflict(Exception):
@@ -84,6 +93,7 @@ class Store:
                 login TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL,
                 title TEXT NOT NULL, nickname TEXT NOT NULL, members INTEGER NOT NULL,
                 available INTEGER NOT NULL DEFAULT 1, is_telemost INTEGER NOT NULL DEFAULT 0,
+                is_channel INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY(login,id));
               CREATE TABLE IF NOT EXISTS selections (
                 login TEXT NOT NULL, chat_id TEXT NOT NULL, PRIMARY KEY(login,chat_id));
@@ -94,6 +104,11 @@ class Store:
             ''')
             if 'is_telemost' not in {row[1] for row in db.execute('PRAGMA table_info(chats)')}:
                 db.execute('ALTER TABLE chats ADD COLUMN is_telemost INTEGER NOT NULL DEFAULT 0')
+            if 'is_channel' not in {row[1] for row in db.execute('PRAGMA table_info(chats)')}:
+                db.execute('ALTER TABLE chats ADD COLUMN is_channel INTEGER NOT NULL DEFAULT 0')
+                # Existing catalogs have no channel flag. Messenger's channel
+                # namespace is 1/...; fresh syncs replace this hint with the API flag.
+                db.execute("UPDATE chats SET is_channel=1 WHERE id LIKE '1/%'")
         self.path.chmod(0o600)
 
     def connect(self):
@@ -112,7 +127,7 @@ class Store:
             if not row:
                 raise KeyError('unknown profile')
             chats = [dict(r) for r in db.execute(
-                "SELECT id,kind,title,nickname,members,available,is_telemost FROM chats WHERE login=? ORDER BY CASE WHEN kind='external' THEN 0 ELSE 1 END,title COLLATE NOCASE", (login,))]
+                "SELECT id,kind,title,nickname,members,available,is_telemost,is_channel FROM chats WHERE login=? ORDER BY CASE WHEN kind='external' THEN 0 ELSE 1 END,title COLLATE NOCASE", (login,))]
             selected = [r[0] for r in db.execute('SELECT chat_id FROM selections WHERE login=?', (login,))]
             synced = db.execute('SELECT updated FROM syncs WHERE login=?', (login,)).fetchone()
             events = [dict(r) for r in db.execute(
@@ -120,6 +135,7 @@ class Store:
         settings=json.loads(row['settings'])
         # Legacy values seed both independent modes; saved jobs remain untouched.
         settings['summary'] = normalize_summary(settings['summary'])
+        settings['destinations'] = normalize_destinations(settings['destinations'])
         settings['schedule'] = normalize_schedule(settings['schedule'], settings['destinations'])
         return {'settings': settings, 'revision': row['revision'],
                 'stopped': bool(row['stopped']), 'updated': row['updated'], 'chats': chats,
@@ -146,12 +162,12 @@ class Store:
             db.execute('BEGIN IMMEDIATE')
             db.execute('UPDATE chats SET available=0 WHERE login=?', (login,))
             for c in chats:
-                db.execute('''INSERT INTO chats(login,id,kind,title,nickname,members,available,is_telemost) VALUES(?,?,?,?,?,?,1,?)
+                db.execute('''INSERT INTO chats(login,id,kind,title,nickname,members,available,is_telemost,is_channel) VALUES(?,?,?,?,?,?,1,?,?)
                     ON CONFLICT(login,id) DO UPDATE SET kind=excluded.kind,title=excluded.title,
                     nickname=excluded.nickname,members=excluded.members,available=1,
-                    is_telemost=excluded.is_telemost''',
+                    is_telemost=excluded.is_telemost,is_channel=excluded.is_channel''',
                            (login, c['id'], c['kind'], c['title'], c.get('nickname', ''),
-                            c.get('members', 0), int(c.get('is_telemost', False))))
+                            c.get('members', 0), int(c.get('is_telemost', False)), int(c.get('is_channel', False))))
             db.execute('DELETE FROM chats WHERE login=? AND available=0 AND id NOT IN (SELECT chat_id FROM selections WHERE login=?)', (login,login))
             db.execute('INSERT OR REPLACE INTO syncs VALUES(?,?)', (login, now()))
             self._event(db, login, 'sync', f'Список обновлён: {len(chats)} чатов')

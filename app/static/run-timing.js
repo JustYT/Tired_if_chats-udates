@@ -17,5 +17,5 @@ export function timingText(job,delta=0){
   else eta=`Осталось примерно ${duration(low)} – ${duration(high)}`;
  }
  const label={collecting:'Чатов прочитано',extracting:'Блоков обработано',merging:'Блоков объединено',sending:'Шагов отправки выполнено'}[t.phase];
- return `${eta} · Прошло ${spent}${label&&t.total?' · '+label+': '+t.done+'/'+t.total:''}`;
+ return `${eta} · Прошло ${spent}${label&&t.total?' · '+label+': '+t.done+'/'+t.total:''}${t.active_units>1?' · В работе: '+t.active_units:''}`;
 }

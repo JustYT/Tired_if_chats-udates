@@ -3,7 +3,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from .store import now, Conflict, summary_for_kind
-from .timing import estimate
+from .timing import estimate, TIMING_VERSION
 
 ACTIVE = ('queued', 'collecting', 'summarizing', 'sending')
 
@@ -60,8 +60,10 @@ class Jobs:
         for row in rows:
             if (row['kind']=='weekly') != (kind=='weekly'): continue
             summary = summary_for_kind(json.loads(row['snapshot'])['settings']['summary'],row['kind'])
-            if any(summary.get(k)!=settings.get(k) for k in ('provider','model','compression')): continue
-            for phase, values in json.loads(row['stats']).get('timing', {}).get('durations', {}).items():
+            if any(summary.get(k)!=settings.get(k) for k in ('provider','model','reasoning_effort','compression','unread_only')): continue
+            timing=json.loads(row['stats']).get('timing', {})
+            if timing.get('version')!=TIMING_VERSION: continue
+            for phase, values in timing.get('durations', {}).items():
                 result.setdefault(phase, []).extend(v for v in values if isinstance(v, (int,float)) and 0<v<3600)
         return {k: v[:60] for k,v in result.items()}
 
